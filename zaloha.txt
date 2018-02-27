@@ -1,0 +1,148 @@
+#include <iostream>
+#include <sstream>
+#include <utility>
+#include <vector>
+#include <iterator>
+#include <typeinfo>
+#include <fstream>
+#include "Polynom.h"
+
+// read polynomial from input file
+std::vector<long> readPolynomial(const std::string &file){
+    std::vector<long> result;
+    std::ifstream inputFile(file);
+    if (inputFile) {
+        long value;
+
+        // read the elements in the file into a vector
+        while ( inputFile >> value ) {
+            result.push_back(value);
+        }
+    }
+    return result;
+}
+
+// iterative naive algorithm
+Polynom multiply_naive(Polynom a, Polynom b){
+    // get boundaries
+    unsigned long m = a.getSize();
+    unsigned long n = b.getSize();
+
+    // create vector of double with proper size for new polynom
+    std::vector<long> coef (m+n-1, 0);
+
+    // all terms of first polynom
+    for( unsigned long i = 0; i < m; i++ ){
+        //all terms of second polynom
+        for( unsigned long j = 0; j < n; j++ ){
+            coef[i+j] += a.getAt(i) * b.getAt(j);
+        }
+    }
+    // create result polynom
+    Polynom result (coef, coef.size() - 1);
+
+    // return the result polynom
+    return result;
+}
+
+// fill the vector Di
+std::vector<long> fill_di(Polynom a, Polynom b){
+    std::vector<long> result (a.getSize(), 0);
+    for( unsigned long i = 0; i < a.getSize(); i++ ){
+        result[i] = a.getAt(i) * b.getAt(i);
+    }
+    return result;
+}
+
+// set the start position in polynomial
+unsigned long setStart(unsigned long position, unsigned long size){
+    unsigned long start;
+
+    if( position >= size ) {
+        start = position + 1 - size;
+    }
+    else {
+        start = 0;
+    }
+
+    return start;
+}
+
+// set actual boundary
+unsigned long setEnding(unsigned long position){
+    return ((position+1)>>1);
+}
+
+std::vector<long> fill_dst(Polynom a, Polynom b, std::vector<long> D){
+    unsigned long size = (2* (a.getSize() - 1));
+    std::vector<long> result (size, 0);
+
+    for (unsigned long i=1; i<size; i++){
+        for(unsigned long s=0; s<a.getSize(); s++){
+            for(unsigned long t=s; t<a.getSize(); t++){
+                if(s<t && s+t==i){
+                    result[i] += ( a.getAt(s)+a.getAt(t) )*( b.getAt(s)+b.getAt(t) );
+                    result[i] -= (D[s] + D[t]);
+                }
+            }
+        }
+    }
+    std::cout << std::endl;
+    return result;
+}
+
+Polynom karatsuba(Polynom a, Polynom b){
+    // https://eprint.iacr.org/2006/224.pdf
+    unsigned long size = a.getSize();
+
+    // create empty coefficient vector with proper size and fill it with 0
+    std::vector<long> result (2 * size - 1, 0);
+
+    // fill Di vector with Ai * Bi
+    std::vector<long> D = fill_di(a, b);
+
+    std::vector<long> Dst = fill_dst(a, b, D);
+
+    // set the first and last coefficient
+    result[0] = D[0];
+    result[2 * (size - 1)] = D[size - 1];
+
+    // for all coefficients of result vector
+    for (unsigned long position=1; position < 2*(size-1); position++){
+        // compute actual position in both polynomials
+        unsigned long start = setStart(position, size);
+
+        // compute the boundary
+        unsigned long ending = setEnding(position);
+
+        // for even coefficient add Di/2
+        if ( position % 2 == 0) result[position] += D[position / 2];
+
+        /*for ( unsigned long k = start ; k < ending ; k++ ){
+            std::cout << "position: " << position << " = " << k << " + " << position - k << " end: " << ending << std::endl;
+            result[position] += (a.getAt(k) + a.getAt(position - k)) * (b.getAt(k) + b.getAt(position - k));
+            result[position] -= D[k] + D[position - k];
+        }*/
+
+        result[position] += Dst[position];
+    }
+
+    // create polynom with computed coefficients
+    Polynom C (result, result.size() - 1);
+    return C;
+}
+
+
+int main(int argc, char* argv[]) {
+    std::vector<long> poly_vec1 = readPolynomial(argv[1]);
+    std::vector<long> poly_vec2 = readPolynomial(argv[2]);
+    Polynom a (poly_vec1, poly_vec1.size() - 1), b (poly_vec2,poly_vec2.size() - 1);
+    //Polynom result = multiply_naive(a, b);
+    Polynom result = karatsuba(a, b);
+
+    for(long actual : result.getCoefficients()){
+        std::cout << actual << " ";
+    }
+    std::cout << std::endl;
+    return 0;
+}
