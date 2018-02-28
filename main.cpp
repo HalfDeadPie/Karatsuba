@@ -86,8 +86,6 @@ Polynom karatsuba(Polynom a, Polynom b){
     // fill Di vector with Ai * Bi
     std::vector<long> D = fill_di(a, b);
 
-    //std::vector<long> Dst = fill_dst(a, b, D);
-
     // set the first coefficient
     result[0] = D[0];
 
@@ -143,7 +141,7 @@ int main(int argc, char* argv[]) {
     std::chrono::duration<double> elapsed = finish - start;
     std::cout << "Elapsed time: " << elapsed.count() << " s\n";
 
-#ifdef DEBUG
+#ifdef DEBUG_DEEP
     // print the polynom
     for(long actual : result.getCoefficients()){
         std::cout << actual << " ";

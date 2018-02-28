@@ -3,8 +3,12 @@
 DEGREE_LIMIT=20
 COEF_LIMIT=20
 
-
-degree=$(( ( RANDOM % $DEGREE_LIMIT )  + 1 ))
+if [ -z "$1" ]
+then
+    degree=$(( ( RANDOM % $DEGREE_LIMIT )  + 1 ))
+else
+    degree=$1
+fi
 
 mkdir data/deg$degree
 
