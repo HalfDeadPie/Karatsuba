@@ -9,8 +9,8 @@
 #include <chrono>
 
 #define DEBUG
-//#define DEBUG_DEEP
-#define LIMIT 3
+#define DEBUG_DEEP
+#define LIMIT 10
 
 // read polynomial from input file
 std::vector<long> readPolynomial(const std::string &file){
@@ -62,7 +62,7 @@ unsigned long calcStart(unsigned long position, unsigned long size){
     // if position is bigger than size of single polynom
     if(position>=size){
         // return proper position
-        return position + 1 - size;
+        return (position%size) + 1;
     }else{
         // return the start of polynom
         return 0;
@@ -96,7 +96,7 @@ Polynom karatsuba(Polynom a, Polynom b){
     for (unsigned long position=1; position < 2*(size-1); position++){
         // for even coefficient add Di/2
         if ( position % 2 == 0)
-            result[position] += D[position>>1];
+            result[position] += D[position/2];
 
         // calculate start position in polynom
         unsigned long start = calcStart(position, size);
@@ -105,11 +105,15 @@ Polynom karatsuba(Polynom a, Polynom b){
         unsigned long end = calcEnd(position);
 
         // inner loop: sum (Dst) - sum (Ds + Dt) where s+t=i
-        for(unsigned long inner = start; inner<end; inner++){
+        unsigned long inner = start;
+        while(inner < end){
             result[position] += ( a.getAt(inner)+a.getAt(position-inner) ) * ( b.getAt(inner)+b.getAt(position-inner) );
             result[position] -= (D[inner] + D[position-inner]);
+            inner++;
         }
     }
+
+    // urobit rekruzivne a s poliami
 
     // create polynom with computed coefficients
     return Polynom (result, result.size() - 1);
