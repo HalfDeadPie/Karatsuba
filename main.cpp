@@ -1,157 +1,122 @@
 #include <iostream>
 #include <sstream>
-#include <utility>
-#include <vector>
-#include <iterator>
-#include <typeinfo>
 #include <fstream>
-#include "Polynom.h"
-#include <chrono>
 
-#define DEBUG
-#define DEBUG_DEEP
-#define LIMIT 10
+#define PRINT std::cout
+#define ENDLINE std::endl
 
 // read polynomial from input file
-std::vector<long> readPolynomial(const std::string &file){
-    std::vector<long> result;
+long* readPolynomial(const std::string &file, int *size){
+    int degree;
+    long *result = nullptr;
+
     std::ifstream inputFile(file);
     if (inputFile) {
-        long value;
-
-        // read the elements in the file into a vector
-        while ( inputFile >> value ) {
-            result.push_back(value);
+        inputFile >> degree;
+        *size = degree;
+        result = new long[degree];
+        for(int i=0; i<degree; i++){
+            inputFile>>result[i];
         }
     }
     return result;
 }
 
-// iterative naive algorithm
-Polynom multiply_naive(Polynom a, Polynom b){
-    // get boundaries
-    unsigned long m = a.getSize();
-    unsigned long n = b.getSize();
+// naive multiplication
+long* naive(const long *A, const long *B, int size_A, int size_B){
+    long *result = new long[size_A + size_B - 1];
 
-    // create vector of double with proper size for new polynom
-    std::vector<long> coef (m+n-1, 0);
+    // initialization
+    for(int iterator=0; iterator<size_A + size_B - 1; iterator++)
+        result[iterator] = 0;
 
-    // all terms of first polynom
-    for( unsigned long i = 0; i < m; i++ ){
-        //all terms of second polynom
-        for( unsigned long j = 0; j < n; j++ ){
-            coef[i+j] += a.getAt(i) * b.getAt(j);
+    // naive multiplication
+    for (int i = 0; i < size_A; i++) {
+        for (int j = 0; j < size_B; ++j) {
+            result[i+j] += A[i] * B[j];
         }
     }
 
-    // return the result polynom
-    return Polynom (coef, coef.size() - 1);
-}
-
-// fill the vector Di
-std::vector<long> fill_di(Polynom a, Polynom b){
-    std::vector<long> result (a.getSize(), 0);
-    for( unsigned long i = 0; i < a.getSize(); i++ ){
-        result[i] = a.getAt(i) * b.getAt(i);
-    }
     return result;
 }
 
-// start calculation
-unsigned long calcStart(unsigned long position, unsigned long size){
-    // if position is bigger than size of single polynom
-    if(position>=size){
-        // return proper position
-        return (position%size) + 1;
-    }else{
-        // return the start of polynom
-        return 0;
+// print polynomial
+void print(long *A, int size){
+    for (int i = 0; i < size ; i++) {
+        PRINT<<A[i]<<" ";
     }
+    PRINT<<std::endl;
 }
 
-// end calculation
-unsigned long calcEnd(unsigned long position){
-    return (position+1)/2;
-}
+// recursive karatsuba algorithm
+long* karatsuba(const long *A,const long *B, int size) {
+    long *lowA, *highA, *lowB, *highB, *midA, *midB;
 
-// non-recursive karatsuba algorithm
-// https://eprint.iacr.org/2006/224.pdf
-Polynom karatsuba(Polynom a, Polynom b){
-    // get size of both polynoms (their number of coefficients is equal)
-    unsigned long size = a.getSize();
+    // find the limit
+    if (size == 1)
+        return naive(A, B, size, size);
 
-    // create empty coefficient vector with proper size and fill it with 0
-    std::vector<long> result (2 * size - 1, 0);
+    // compute the half for splitting the polynomial
+    int half = size / 2;
 
-    // fill Di vector with Ai * Bi
-    std::vector<long> D = fill_di(a, b);
+    // if size is odd number
+    if(size % 2 == 1)
+        half++;
 
-    // set the first coefficient
-    result[0] = D[0];
+    // prepare arrays for splitted parts
+    lowA = new long[half];
+    lowB = new long[half];
+    midA = new long[half];
+    midB = new long[half];
+    highA = new long[half];
+    highB = new long[half];
 
-    //set the last coefficient
-    result[2 * (size - 1)] = D[size - 1];
+    // init arrays
+    for(int i=0; i<half; i++) lowA[i] =  lowB[i] = midA[i] = midB[i] = highA[i] = highB[i] = 0;
 
-    // for all coefficients of result vector
-    for (unsigned long position=1; position < 2*(size-1); position++){
-        // for even coefficient add Di/2
-        if ( position % 2 == 0)
-            result[position] += D[position/2];
-
-        // calculate start position in polynom
-        unsigned long start = calcStart(position, size);
-
-        // calculate end position in polynom
-        unsigned long end = calcEnd(position);
-
-        // inner loop: sum (Dst) - sum (Ds + Dt) where s+t=i
-        unsigned long inner = start;
-        while(inner < end){
-            result[position] += ( a.getAt(inner)+a.getAt(position-inner) ) * ( b.getAt(inner)+b.getAt(position-inner) );
-            result[position] -= (D[inner] + D[position-inner]);
-            inner++;
-        }
+    // init low coefficients
+    for(int i=0; i<half; i++){
+        lowA[i] = A[i];
+        lowB[i] = B[i];
     }
 
-    // urobit rekruzivne a s poliami
-
-    // create polynom with computed coefficients
-    return Polynom (result, result.size() - 1);
-}
-
-// decides which multiplication will be used
-Polynom multiply(Polynom a, Polynom b){
-    if( (a.getDegree() != b.getDegree()) || a.getDegree() < LIMIT || b.getDegree() < LIMIT){
-#ifdef DEBUG
-        std::cout << "Naive multiplication" << std::endl;
-#endif
-        return multiply_naive(a, b);
-    }else{
-#ifdef DEBUG
-        std::cout << "Karatsuba multiplication" << std::endl;
-#endif
-        return karatsuba(a, b);
+    // init high coefficients
+    for(int i=half; i<size; i++){
+        highA[i-half] = A[i];
+        highB[i-half] = B[i];
     }
+
+    // init mid coefficients
+    for(int i=0; i<half; i++){
+        midA[i] = lowA[i] + highA[i];
+        midB[i] = lowB[i] + highB[i];
+    }
+
+    long *z0 = karatsuba(lowA, lowB, half);
+    long *z1 = karatsuba(midA, midB, half);
+    long *z2 = karatsuba(highA, highB, half);
+
+    // compute the result
+    auto *result = new long[2*size-1];
+    for (int i = 0; i < 2*size-1; i++) result[i] = 0;
+
+    for(int i=0; i<2*half-1; i++) {
+        result[i + 2 * half] += z2[i];
+        result[i + half] += z1[i] - z2[i] - z0[i];
+        result[i] += z0[i];
+    }
+
+    return result;
 }
 
 int main(int argc, char* argv[]) {
-    std::vector<long> poly_vec1 = readPolynomial(argv[1]);
-    std::vector<long> poly_vec2 = readPolynomial(argv[2]);
-    Polynom a (poly_vec1, poly_vec1.size() - 1), b (poly_vec2,poly_vec2.size() - 1);
+    int size_A, size_B;
+    long* A = readPolynomial(argv[1], &size_A);
+    long* B = readPolynomial(argv[2], &size_B);
 
-    auto start = std::chrono::high_resolution_clock::now();
-    Polynom result = multiply(a, b);
-    auto finish = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = finish - start;
-    std::cout << "Elapsed time: " << elapsed.count() << " s\n";
+    //multiply the polynomials
+    long* result = karatsuba(A, B, size_A);
 
-#ifdef DEBUG_DEEP
-    // print the polynom
-    for(long actual : result.getCoefficients()){
-        std::cout << actual << " ";
-    }
-    std::cout << std::endl;
-#endif
-
+    print(result, size_A + size_B - 1);
     return 0;
 }

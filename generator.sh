@@ -18,6 +18,8 @@ file2=data/deg$degree/pol_$degree.2.txt
 touch $file1
 touch $file2
 
+echo "$degree" >> $file1
+echo "$degree" >> $file2
 
 for i in $( seq 1 $degree ) 
 do
