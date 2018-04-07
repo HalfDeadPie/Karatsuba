@@ -19,10 +19,10 @@
 #$ -cwd
 
 # Defines  or  redefines  the  path used for the standard error stream of the job.
-#$ -e .
+#$ -e errors/
 
 # The path used for the standard output stream of the job.
-#$ -o .
+#$ -o output/
 
 # Do not change.
 #$ -pe ompi 1
@@ -30,4 +30,4 @@
 # Do not change.
 #$ -q gpu_01.q
 
-./a.out data/deg200/*
+./a.out data/deg120000/*
