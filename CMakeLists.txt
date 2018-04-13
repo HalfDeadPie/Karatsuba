@@ -3,4 +3,4 @@ project(untitled)
 
 set(CMAKE_CXX_STANDARD 11)
 
-add_executable(untitled main.cpp support.cpp static.h)
+add_executable(untitled main.cpp static.h)

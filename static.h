@@ -12,9 +12,23 @@
 #include <cmath>
 #include <cstring>
 
+//---------------------------------------------------------
+
+/*
+ * 1 - sequence version
+ * 2 - OpenMP version
+ * 3 - OpenACC version
+ * 4 - sequence iterative version
+ * 5 - OpenACC iterative version
+ */
+int VERSION = 5;
+
+//---------------------------------------------------------
+
 //#define XEON
 
 //---------------------------------------------------------
+
 // VARIABILE - only one!
 //#define VAR_NAIVE_LIMIT
 //#define VAR_TASK_LIMIT
@@ -34,19 +48,19 @@
 
 // Paralelisation modes
 //#define NAIVE_PARALELISM
-#define TASK_PARALLELISM
+//#define TASK_PARALLELISM
 //#define FOR_PARALLELISM
 
 //-----------------------------------------------------------
 
-/*If defined, Karatsuba algorithm is called. Otherwise, the naive algorithm computes all multiplications*/
+/*If defined, Karatsuba algorithm is called. Otherwise, the omp_naive algorithm computes all multiplications*/
 #define KARATSUBA
 
 //-----------------------------------------------------------
 
 /*Limit value that is compared to actual size of multiplicated polynomials. When their size is equal or bellow
- * this value, the polynomials are multiplicated using the naive method*/
-int NAIVE_LIMIT = 128;
+ * this value, the polynomials are multiplicated using the omp_naive method*/
+int NAIVE_LIMIT = 256;
 
 //-----------------------------------------------------------
 
@@ -56,7 +70,7 @@ int TASK_LIMIT = 256;
 //-----------------------------------------------------------
 
 int FOR_THREADS = 12;
-int PARALLEL_FOR_LIMIT = 4;
+int PARALLEL_FOR_LIMIT = 3;
 
 //-----------------------------------------------------------
 
@@ -73,5 +87,9 @@ int TILING_FACTOR = 1024;
 
 /*Debug the result of multiplication - if defined, the result is printed to standard output*/
 #define DEBUG
+
+std::ofstream outfile;
+
+int threads [8] = { 1, 2, 4, 6, 8, 12, 24, 32 };
 
 #endif //UNTITLED_STATIC_H
