@@ -25,13 +25,44 @@ void print(TYPE *A, int size){
     PRINT<<std::endl;
 }
 
+// save the result to output file
+void saveResult(std::string &file, const TYPE *polynomial, TYPE size){
+    std::ofstream myfile;
+    myfile.open (file);
+    myfile << 2 * size - 1 << "\n";
+    for(int i=0; i<2 * size - 1; i++){
+        myfile << polynomial[i] << " ";
+    }
+    myfile.close();
+}
+
 // compare two numbers and return the smaller one
 TYPE min(int a, int b) {
     return a > b ? b : a;
 }
 
+/* computes the checksum based on equality of coefficients on random positions
+ * but the result must be saved first. The best way how to save result is to
+ * define SAVE in static.h and run the naive sequent algorithm*/
+void checksum(std::string &file, const TYPE *polynomial, TYPE size){
+    int realSize;
+    int mySize = 2 * size - 1;
+    TYPE *realResult = readPolynomial(file, &realSize);
+
+    if(realSize != mySize)
+        PRINT<<"\n\n!!!WRONG CHECKSUM (SIZE)!!!\n\n";
+
+    int position = 0;
+    for(int i = 0; i < NUM_OF_CHECKS; i++){
+        position = rand() % mySize;
+        if(polynomial[position] != realResult[position])
+            PRINT<<"\n\n!!!WRONG CHECKSUM (RESULT)!!!\n\n";
+    }
+
+}
+
 // print the time resuls to standard output and times-file output
-void printStats(double elapsed, int size){
+void printStats(double elapsed, const TYPE *polynomial, int size){
     std::string variable_parameter, name;
     int column=0;
 
@@ -80,11 +111,38 @@ void printStats(double elapsed, int size){
 
     #ifdef VAR_TILING_FACTOR
     variable_parameter =  "tiling_factor";
-    column = TILING_FACTOR;
+    column = ::TILING_FACTOR;
     #endif
 
     #ifdef XEON
     variable_parameter = "xeon_for_threads+naive_threads_";
+    #endif
+
+    #ifdef VAR_NUM_GANGS
+    variable_parameter += "_num_gangs_";
+    column = ::NUM_GANGS;
+    #endif
+
+    #ifdef VAR_NUM_WORKERS
+    variable_parameter += "_num_workers_";
+    column = ::NUM_WORKERS;
+    #endif
+
+    #ifdef VAR_VECTOR_LENGTH
+    variable_parameter += "_vector_length_";
+    column = ::VECTOR_LENGTH;
+    #endif
+
+    #ifdef SAVE
+    if(::VERSION == 1) {
+        std::string resultOutput = "results/result_" + std::to_string(size) + ".txt";
+        saveResult(resultOutput, polynomial, size);
+    }
+    #endif
+
+    #ifdef CHECKSUM
+        std::string resultOutput = "results/result_" + std::to_string(size) + ".txt";
+        checksum(resultOutput, polynomial, size);
     #endif
 
     if(!::outfile.is_open())
@@ -125,6 +183,19 @@ void setGlobalParameter(int i){
     ::NAIVE_THREADS = static_cast<int>(pow(2, i));
 		    ::FOR_THREADS = static_cast<int>(pow(2, i));
     #endif
+
+    #ifdef VAR_NUM_GANGS
+    ::NUM_GANGS = static_cast<int>(pow(2, i));
+    #endif
+
+    #ifdef VAR_NUM_WORKERS
+    ::NUM_WORKERS = static_cast<int>(pow(2, i));
+    #endif
+
+    #ifdef VAR_VECTOR_LENGTH
+    ::VECTOR_LENGTH = static_cast<int>(pow(2, i));
+    #endif
+
 }
 
 //---------------------------------------------------------
@@ -355,12 +426,13 @@ TYPE* omp_karatsuba(const TYPE *A, const TYPE *B, int size, int depth) {
 TYPE* acc_naive(const TYPE *A, const TYPE *B, int size_A, int size_B){
     TYPE *__restrict__ result = new TYPE[size_A + size_B - 1];
 
-	#pragma acc parallel num_gangs(1024) num_workers(128)
-    {
-    	for(int i=0; i<size_A + size_B - 1; i++) result[i] = 0;
+	for(int i=0; i<size_A + size_B - 1; i++) result[i] = 0;
+
+	#pragma acc kernels num_gangs(1024) num_workers(32) copy(result[0:2*size_A-1]) copyin(A[0:size_A], B[0:size_B])
+	{
         #pragma acc loop gang
         for (int i = 0; i < size_A; i++) {
-           	#pragma acc loop worker
+        	#pragma acc loop worker
             for (int j = 0; j < size_B; j++) {
                 result[i + j] += A[i] * B[j];
             }
@@ -429,7 +501,7 @@ TYPE* acc_karatsuba(const TYPE *A, const TYPE *B, int size, int depth) {
     	// compute the result
     	#pragma acc data copy(result[0 : 2 * size - 1])
 	    {
-    		#pragma acc parallel vector_length(1024)
+    		#pragma acc parallel vector_length(::VECTOR_LENGTH)
     		{
     			#pragma acc loop vector
     			for (int i = 0; i < 2 * half - 1; i++)
@@ -461,10 +533,11 @@ TYPE* acc_karatsuba(const TYPE *A, const TYPE *B, int size, int depth) {
 //---------------------------------------------------------
 
 //  iterative version of Karatsuba algorithm
-// https://eprint.iacr.org/2006/224.pdf
 TYPE* iter_karatsuba(const TYPE *A, const TYPE *B, TYPE size){
+    // https://eprint.iacr.org/2006/224.pdf
+
     // create empty coefficient vector with proper size and fill it with 0
-    auto *__restrict__ result = new TYPE[2*size-1];
+    auto *__restrict__ result = new TYPE[2 * (size - 1)];
 
 
     // fill Di vector with Ai * Bi
@@ -476,16 +549,16 @@ TYPE* iter_karatsuba(const TYPE *A, const TYPE *B, TYPE size){
     result[2 * (size - 1)] = D[size - 1];
 
     // for all coefficients of result vector
-    for (TYPE position=1; position < 2*(size-1); position++){
+    for (TYPE position=1; position < 2* (size-1); position++){
         // for even coefficient add Di/2
         if ( position % 2 == 0)
-            result[position] += D[position/2];
+            result[position] += D[position >> 1];
 
         // calculate start position in polynom
         TYPE start = (position >= size) ? (position % size ) + 1 : 0;
 
         // calculate end position in polynom
-        TYPE end = (position + 1) / 2;
+        TYPE end = (position + 1) >> 1;
 
         // inner loop: sum (Dst) - sum (Ds + Dt) where s+t=i
         for(TYPE inner = start; inner < end; inner++){
@@ -497,60 +570,58 @@ TYPE* iter_karatsuba(const TYPE *A, const TYPE *B, TYPE size){
     return result;
 }
 
-TYPE* acc_iter_karatsuba(const TYPE *A, const TYPE *B, TYPE size){
+// iterative version of Karatsuba algorithm using the OpenACC directives
+TYPE* acc_iter_karatsuba(const TYPE  *A,  const TYPE *B, TYPE size) {
     // create empty coefficient vector with proper size and fill it with 0
-    TYPE *__restrict__ result = new TYPE[2*size-1];
+    TYPE *__restrict__ result = new TYPE[2 * size - 1];
 
     // fill Di vector with Ai * Bi
-    TYPE *__restrict__ D = new TYPE[2*size-1];
-    #pragma acc parallel loop
-    for( TYPE i = 0; i < size; i++ ) D[i] = A[i] * B[i];
+    TYPE *__restrict__ D = new TYPE[2 * size - 1];
+    //#pragma acc parallel loop
+    for (TYPE i = 0; i < size; i++) D[i] = A[i] * B[i];
 
     // set the first and last coefficients
     result[0] = D[0];
     result[2 * (size - 1)] = D[size - 1];
 
-    /*TYPE *__restrict__ starters = new TYPE[2 * (size - 1)];
-    for(int position=0; position < 2*(size-1); position++)
-        starters[position] = ((position >= size) ? (position % size ) + 1  : 0);
-
-    TYPE *__restrict__ enders = new TYPE[2 * (size - 1)];
-    for(int position=0; position < 2*(size-1); position++)
-        enders[position] = (position + 1) / 2;*/
-
-
-    #pragma acc kernels num_gangs(1024) num_workers(32) copy (result[0:2*size-1]) copyin(A[0:size], B[0:size], D[2*size-1])
+    //#pragma acc kernels num_gangs(::NUM_GANGS) num_workers(::NUM_WORKERS) copy (result[0:2*size-1]) copyin(A[0:size], B[0:size], D[2*size-1])
+    //#pragma acc parallel copy (result[0:2*size-1]) copyin(A[0:size], B[0:size], D[2*size-1])
+    //#pragma acc kernels num_workers(::NUM_WORKERS) copy(result[0:2*size-1]) copyin(A[0:size], B[0:size], D[2*size-1])
+    //#pragma acc parallel vector_length(1024) copy(result[0:2*size-1]) copyin(A[0:size], B[0:size], D[0:2*size-1])
+    #pragma acc parallel copy(result[0:2*size-1]) copyin(A[0:size], B[0:size], D[0:2*size-1])
     {
         #pragma acc loop gang
-        for (TYPE position = 1; position < 2 * (size - 1); position++) {
+        for(TYPE position = 1; position < 2 * (size - 1); position++) {
             // for even coefficient add Di/2
             if (position % 2 == 0)
-                result[position] += D[position / 2];
+                result[position] += D[position >> 1];
 
-            TYPE start = (position >= size) ? (position % size ) + 1  : 0;
-            TYPE end = (position + 1) / 2;
+            TYPE start = (position >= size) ? (position % size) + 1 : 0;
+            TYPE end = (position + 1) >> 1;
 
             // inner loop: sum (Dst) - sum (Ds + Dt) where s+t=i
-            #pragma acc loop worker
-            for(TYPE inner = start; inner < end; inner++){
+           	//#pragma acc loop
+            for (TYPE inner = start; inner < end; inner++) {
                 result[position] += (A[inner] + A[position - inner]) * (B[inner] + B[position - inner]);
                 result[position] -= (D[inner] + D[position - inner]);
             }
         }
     }
 
-    return result;
+	return result;
 }
+
+
+//---------------------------------------------------------
 
 
 int main(int argc, char* argv[]) {
 
-    int size_A, size_B;
+ 	int size_A, size_B;
     TYPE *A = readPolynomial(argv[1], &size_A);
     TYPE *B = readPolynomial(argv[2], &size_B);
 
     for( int i = START_LIMIT; i <= END_LIMIT; i += STEP ) {
-
         setGlobalParameter(i);
 
         // Record start time
@@ -559,7 +630,7 @@ int main(int argc, char* argv[]) {
         // multiply the polynomials
         TYPE *result;
 
-        if (VERSION==1) {
+        if (::VERSION==1) {
             PRINT << "Sequence version:" << std::endl;
             #ifdef KARATSUBA
                 result = seq_karatsuba(A, B, size_A, 0);
@@ -581,7 +652,7 @@ int main(int argc, char* argv[]) {
             #endif
         }
 
-        else if(::VERSION==3) {
+		else if(::VERSION==3) {
             PRINT << "OpenACC version:" << std::endl;
             #ifdef KARATSUBA
                 result = acc_karatsuba(A, B, size_A, 0);
@@ -601,11 +672,10 @@ int main(int argc, char* argv[]) {
         } else if(::VERSION==5) {
             PRINT << "OpenACC iterative version:" << std::endl;
             #ifdef KARATSUBA
-                result = acc_iter_karatsuba(A, B, size_A);
+            result = acc_iter_karatsuba(A, B, size_A);
             #else
-                result = acc_naive(A, B, size_A, size_B);
+            result = acc_naive(A, B, size_A, size_B);
             #endif
-
         }
 
         // stop timer
@@ -619,7 +689,7 @@ int main(int argc, char* argv[]) {
             print(result, size_A + size_B - 1);
         #endif
 
-        printStats(elapsed, size_A);
+        printStats(elapsed, result, size_A);
     }
 
     ::outfile.close();
